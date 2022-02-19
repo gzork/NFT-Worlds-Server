@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# shellcheck source=start-utils
+. "${SCRIPTS:-/}start-utils"
+isDebugging && set -x
+
+if [ -n "$ICON" ]; then
+    if [ ! -e server-icon.png ] || [ "${OVERRIDE_ICON}" == "TRUE" ]; then
+      log "Using server icon from $ICON..."
+      # Not sure what it is yet...call it "img"
+      curl -sSL -o /tmp/icon.img $ICON
+      specs=$(identify /tmp/icon.img | awk '{print $2,$3}')
+      if [ "$specs" = "PNG 64x64" ]; then
+        mv /tmp/icon.img /data/server-icon.png
+      else
+        log "Converting image to 64x64 PNG..."
+        convert /tmp/icon.img -resize 64x64! /data/server-icon.png
+      fi
+    fi
+fi
+
+canUseRollingLogs=true
+useFallbackJvmFlag=false
+
+useFallbackJvmFlag=true
+
+if isTrue "${DEBUG_MEMORY}"; then
+  log "Memory usage and availability (in MB)"
+  uname -a
+  free -m
+fi
+
+log "Starting the Minecraft server..."
+
+if isTrue "${DEBUG_EXEC}"; then
+  set -x
+fi
+
+exec java -Xms2G -Xmx2G -jar "$SERVER"
+
+

@@ -1,0 +1,121 @@
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
+# shellcheck source=start-utils
+. "${SCRIPTS:-/}start-utils"
+
+: "${EULA:=}"
+: "${PROXY:=}"
+: "${RCON_PASSWORD_FILE:=}"
+
+shopt -s nullglob
+
+isDebugging && set -x
+
+#umask 002
+export HOME=/data
+
+log "Running as uid=$(id -u) gid=$(id -g) with /data as '$(ls -lnd /data)'"
+
+if [ ! -e /data/eula.txt ]; then
+  if ! isTrue "$EULA"; then
+    log ""
+    log "Please accept the Minecraft EULA at"
+    log "  https://account.mojang.com/documents/minecraft_eula"
+    log "by adding the following immediately after 'docker run':"
+    log "  -e EULA=TRUE"
+    log ""
+    exit 1
+  fi
+
+  writeEula
+fi
+
+if isTrue "${ENABLE_AUTOPAUSE}" && isTrue "${EXEC_DIRECTLY:-false}"; then
+    log "EXEC_DIRECTLY=true is incompatible with ENABLE_AUTOPAUSE=true"
+    exit 1
+fi
+
+if isTrue "${ENABLE_AUTOPAUSE}" && isTrue "${ENABLE_AUTOSTOP}"; then
+    log "ENABLE_AUTOPAUSE=true is incompatible with ENABLE_AUTOSTOP=true"
+    exit 1
+fi
+
+if [[ $PROXY ]]; then
+    export http_proxy="$PROXY"
+    export https_proxy="$PROXY"
+    export JAVA_TOOL_OPTIONS+="-Djava.net.useSystemProxies=true"
+    log "INFO: Giving proxy time to startup..."
+    sleep 5
+fi
+
+if [[ $RCON_PASSWORD_FILE ]]; then
+    log ""
+    if [ ! -e ${RCON_PASSWORD_FILE} ]; then
+	log "Initial RCON password file ${RCON_PASSWORD_FILE} does not seems to exist."
+	log "Please ensure your configuration."
+	log "If you are using Docker Secrets feature, please check this for further information: "
+	log " https://docs.docker.com/engine/swarm/secrets"
+	log ""
+	exit 1
+    else
+	RCON_PASSWORD=$(cat ${RCON_PASSWORD_FILE})
+	export RCON_PASSWORD
+    fi
+    log ""
+fi
+
+# Some Docker management UIs grab all the image declared variables and present them for configuration.
+# When upgrading images across Java versions, that creates a mismatch in PATH's expected by base image.
+if ! which java > /dev/null; then
+  log "ERROR: PATH should not be explicitly passed into the container"
+  log "       Remove configuration of that variable."
+  exit 1
+fi
+
+export VERSIONS_JSON=https://launchermeta.mojang.com/mc/game/version_manifest.json
+
+# case "X$VERSION" in
+#   X|XLATEST|Xlatest)
+#     if ! VANILLA_VERSION=$(get --json-path '$.latest.release' "$VERSIONS_JSON"); then
+#       log "ERROR: version lookup failed: $VANILLA_VERSION"
+#       exit 1
+#     fi
+#   ;;
+#   XSNAPSHOT|Xsnapshot)
+#     if ! VANILLA_VERSION=$(get --json-path '$.latest.snapshot' "$VERSIONS_JSON"); then
+#       log "ERROR: version lookup failed: $VANILLA_VERSION"
+#       exit 1
+#     fi
+#   ;;
+#   *)
+#     VANILLA_VERSION=$VERSION
+#   ;;
+# esac
+# export VANILLA_VERSION
+# log "Resolved version given ${VERSION} into ${VANILLA_VERSION}"
+
+cd /data || exit 1
+
+# export ORIGINAL_TYPE=${TYPE^^}
+
+if isTrue "${ENABLE_AUTOPAUSE}"; then
+  ${SCRIPTS:-/}start-autopause
+fi
+
+if isTrue "${ENABLE_AUTOSTOP}"; then
+  ${SCRIPTS:-/}start-autostop
+fi
+
+# if versionLessThan 1.7; then
+#   echo "
+# MC_HEALTH_EXTRA_ARGS=(
+#   --use-server-list-ping
+# )
+#   " > /data/.mc-health.env
+# fi
+
+exec "${SCRIPTS:-/}start-deployNFTWorlds" "$@"
+
+esac
