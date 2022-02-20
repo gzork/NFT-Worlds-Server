@@ -4,12 +4,12 @@ FROM eclipse-temurin:17-jdk
 
 # CI system should set this to a hash or git revision of the build directory and it's contents to
 # ensure consistent cache updates.
-ARG BUILD_FILES_REV=1
-RUN --mount=target=/docker/build,source=docker/build \
-    REV=${BUILD_FILES_REV} /build/run.sh install-packages
+# ARG BUILD_FILES_REV=1
 
-RUN --mount=target=/docker/build,source=docker/build \
-    REV=${BUILD_FILES_REV} /build/run.sh setup-user
+COPY docker/build/ /
+
+RUN /run.sh install-packages && \
+    /run.sh setup-user
 
 COPY --chmod=644 docker/files/sudoers* /etc/sudoers.d
 
